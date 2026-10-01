@@ -18,9 +18,19 @@
 @media (display-mode: standalone){
   body{overscroll-behavior-y:none;}
 }
-</style></head>
+#parseResult .parse-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin:9px 0}.parse-kpi{background:#0b1710;border:1px solid #294637;border-radius:9px;padding:8px}.parse-kpi b{display:block;font-size:16px}.parse-kpi span{font-size:9px;color:#9db2a5}.parse-horse{border-top:1px solid #243d30;padding:8px 0;font-size:11px}.parse-horse strong{font-size:13px}.ok{color:#67d69a}.warn{color:#e0b96b}.err{color:#e47b7b}@media(max-width:600px){#parseResult .parse-summary{grid-template-columns:repeat(2,1fr)}}</style><script src="js/JRAParser.js"></script>
+</head>
 <body><main class="wrap">
 <header class="top"><div><div class="eyebrow">JRA RACE SCENARIO LAB / DATA READY</div><div class="title">予想展開アニメーション 2.0</div><div class="sub">天候・馬場・風・含水率を展開シミュレーションへ反映する試作品</div></div><div class="status"><span class="dot"></span><span id="dataStatus">サンプルデータ</span></div></header>
+<section class="card" style="margin-bottom:12px">
+<h2>📱 JRAデータ貼り付け</h2>
+<div class="note">iPhoneのSafariでJRAの出馬表・過去走をコピーし、そのまま下の欄へ貼り付けてください。馬ごとの整形は不要です。</div>
+<textarea id="jraInput" placeholder="JRAからコピーしたデータをここへ貼り付け" style="width:100%;min-height:150px;margin-top:9px;background:#08130d;color:#edf7f0;border:1px solid #345443;border-radius:10px;padding:12px;font-size:16px;line-height:1.55;resize:vertical"></textarea>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:9px">
+<button class="primary" onclick="parseJRAInput()">JRAデータを解析する</button><button onclick="clearJRAInput()">クリア</button>
+</div>
+<div id="parseResult" style="display:none;margin-top:10px"></div>
+</section>
 <section class="toolbar"><select id="trackSelect"><option>東京 11R 芝1600m</option><option>中山 10R 芝2000m</option><option>阪神 9R ダート1400m</option></select><select id="pace"><option value="M">平均ペース</option><option value="S">スローペース</option><option value="H">ハイペース</option></select><select id="weatherSel"><option value="sun">☀ 晴</option><option value="cloud">☁ 曇</option><option value="rain">☂ 雨</option></select><select id="condition"><option value="good">芝：良</option><option value="yield">芝：稍重</option><option value="soft">芝：重</option><option value="bad">芝：不良</option></select><button class="primary" onclick="play()">▶ 展開を再生</button><button onclick="resetRace()">↺ リセット</button><button onclick="simulateLive()">↻ データ更新</button><label style="display:flex;align-items:center;gap:6px;font-size:10px;color:#9db2a5"><input id="rainToggle" type="checkbox">雨脚を表示</label></section>
 <section class="weather"><div class="metric"><div class="k">現在天候</div><div class="v" id="wIcon">☀ 晴</div><div class="s">開催情報</div></div><div class="metric"><div class="k">気温</div><div class="v" id="temp">22℃</div><div class="s">予想への影響：小</div></div><div class="metric"><div class="k">風</div><div class="v" id="windTxt">南西 4m/s</div><div class="wind"><i id="windBar"></i></div></div><div class="metric"><div class="k">芝馬場</div><div class="v" id="condTxt">良</div><div class="s" id="cushion">クッション値 9.4</div></div><div class="metric"><div class="k">含水率</div><div class="v" id="moist">12.8%</div><div class="s">ゴール前 / 4角</div></div></section>
 <div class="grid"><section class="card"><h2>レース展開</h2><div class="timeline"><div class="step active" id="s0">スタート</div><div class="step" id="s1">1C</div><div class="step" id="s2">向正面</div><div class="step" id="s3">3〜4C</div><div class="step" id="s4">直線</div><div class="step" id="s5">ゴール</div></div><div class="track" id="track"><div class="rainlines" id="rainlines"></div><div class="finish"></div><div class="label">ゴール</div><div class="lane" style="top:16%"></div><div class="lane" style="top:32%"></div><div class="lane" style="top:48%"></div><div class="lane" style="top:64%"></div><div class="lane" style="top:80%"></div></div><div class="phase" id="phase"><strong>スタート</strong> — 先行勢が前へ。馬場・風の条件を加味した展開をシミュレーションします。</div></section>
@@ -29,14 +39,35 @@
 <div class="footer">※現在は自己完結型の試作品です。実運用ではJRA/JRA-VANから取得した利用可能なデータを入力・連携し、開催当日の天候・馬場変更、取消、騎手変更などを予想とアニメーションへ反映します。JRAでは開催当日の天候・馬場状態を「今週の開催お知らせ」で提供しています。</div>
 </main>
 <script>
-const horses=[['1','サクラブレイズ'],['2','ミッドナイト'],['3','レッドアロー'],['4','オーシャンベル'],['5','グランフェザー'],['6','ノーブルスカイ'],['7','キングスロード'],['8','ブライトリバー']];const track=document.getElementById('track');
-function build(){horses.forEach((h,i)=>{let d=document.createElement('div');d.className='horse h'+h[0];d.id='h'+h[0];d.innerHTML=h[0]+'<small>'+h[1].slice(0,4)+'</small>';d.style.left=(8+i*9)+'%';d.style.top=(7+i*11)+'%';track.appendChild(d)})}
+let horses=[['1','サクラブレイズ'],['2','ミッドナイト'],['3','レッドアロー'],['4','オーシャンベル'],['5','グランフェザー'],['6','ノーブルスカイ'],['7','キングスロード'],['8','ブライトリバー']];let parsedJRA=null;const track=document.getElementById('track');
+function build(){track.querySelectorAll('.horse').forEach(e=>e.remove());horses.forEach((h,i)=>{let d=document.createElement('div');d.className='horse h'+((i%8)+1);d.id='h'+h[0];d.innerHTML=h[0]+'<small>'+String(h[1]).slice(0,4)+'</small>';d.style.left=(5+(i%6)*15)+'%';d.style.top=(5+Math.floor(i/6)*28)+'%';track.appendChild(d)})}
 const states=[[[8,8],[18,19],[14,30],[27,40],[40,51],[51,62],[64,73],[71,83]],[[9,7],[20,18],[17,29],[29,40],[39,50],[51,61],[63,71],[70,80]],[[10,6],[23,15],[21,26],[34,36],[42,47],[49,57],[61,67],[67,78]],[[14,5],[28,13],[25,23],[39,32],[43,41],[50,51],[56,63],[62,75]],[[67,4],[58,12],[72,20],[53,30],[80,39],[69,50],[61,61],[76,73]],[[79,4],[68,13],[75,22],[62,31],[84,40],[72,50],[66,61],[81,72]]];
 const texts=[['スタート','先行勢が前へ。'],['1コーナー','隊列形成。風向きと馬場状態を加味して位置取りを補正。'],['向正面','ペースが固まり、脚を温存する馬と前へ行く馬が分かれる。'],['3〜4コーナー','差し勢が進出。馬場バイアスによって外・内の評価を変化。'],['直線','各馬の末脚指数と馬場適性を反映して加速。'],['ゴール','最終順位は予測モデルのシナリオ結果。実際の着順を保証するものではありません。']];
-function setState(n){states[n].forEach((p,i)=>{let e=document.getElementById('h'+horses[i][0]);e.style.left=p[0]+'%';e.style.top=p[1]+'%';e.classList.toggle('leader',i===4&&n>=4);});document.querySelectorAll('.step').forEach((e,i)=>e.classList.toggle('active',i===n));document.getElementById('phase').innerHTML='<strong>'+texts[n][0]+'</strong> — '+texts[n][1]}
+function setState(n){states[n].forEach((p,i)=>{if(!horses[i])return;let e=document.getElementById('h'+horses[i][0]);if(!e)return;e.style.left=p[0]+'%';e.style.top=p[1]+'%';e.classList.toggle('leader',i===4&&n>=4);});document.querySelectorAll('.step').forEach((e,i)=>e.classList.toggle('active',i===n));document.getElementById('phase').innerHTML='<strong>'+texts[n][0]+'</strong> — '+texts[n][1]}
 function play(){resetRace();let i=0;let timer=setInterval(()=>{setState(i);i++;if(i>5)clearInterval(timer)},900)}function resetRace(){setState(0)}
 function apply(){let w=document.getElementById('weatherSel').value,c=document.getElementById('condition').value;let labels={sun:'☀ 晴',cloud:'☁ 曇',rain:'☂ 雨'};document.getElementById('wIcon').textContent=labels[w];let cl={good:['良','9.4','12.8%'],yield:['稍重','8.3','17.6%'],soft:['重','7.4','22.5%'],bad:['不良','6.8','27.9%']}[c];document.getElementById('condTxt').textContent=cl[0];document.getElementById('cushion').textContent='クッション値 '+cl[1];document.getElementById('moist').textContent=cl[2];document.getElementById('rainlines').classList.toggle('on',w==='rain'||document.getElementById('rainToggle').checked);document.getElementById('track').classList.toggle('rain',w==='rain');let hard=c==='good',wet=!hard;document.getElementById('surfaceEffect').textContent=wet?'差し・持続力を補正':'標準';document.getElementById('windEffect').textContent=w==='rain'?'中':'弱';document.getElementById('biasEffect').textContent=wet?'差し寄り':'先行寄り';if(wet){document.getElementById('bC').style.width='72%';document.getElementById('bD').style.width='55%';document.getElementById('bF').style.width='61%';document.getElementById('bP').style.width='65%';document.getElementById('reason5').textContent='湿った馬場で末脚・持続力を評価。差しが届くシナリオを強めています。'}else{document.getElementById('bC').style.width='58%';document.getElementById('bD').style.width='34%';document.getElementById('bF').style.width='78%';document.getElementById('bP').style.width='70%';document.getElementById('reason5').textContent='中団から直線で伸びる想定。平均〜やや速い流れで末脚を活かせる。'}}
 document.getElementById('weatherSel').addEventListener('change',apply);document.getElementById('condition').addEventListener('change',apply);document.getElementById('rainToggle').addEventListener('change',apply);
+function parseJRAInput(){
+  const raw=document.getElementById('jraInput').value;
+  parsedJRA=JRAParser.parse(raw,{track:document.getElementById('trackSelect').value});
+  const r=parsedJRA, s=r.summary;
+  let html='<div class="parse-summary">'+[['出走馬',s.horseCount+'頭'],['前4走',s.runsDetected+'/ '+(s.horseCount*4||0)+'走'],['正常走',s.validRuns+'走'],['信頼度',s.confidence]].map(x=>'<div class="parse-kpi"><span>'+x[0]+'</span><b>'+x[1]+'</b></div>').join('')+'</div>';
+  html+='<div class="note">取消・中止・除外・失格: '+s.specialResults+'走 / エラー: <span class="'+(s.errorCount?'err':'ok')+'">'+s.errorCount+'</span> / 警告: <span class="'+(s.warningCount?'warn':'ok')+'">'+s.warningCount+'</span></div>';
+  if(s.errorCount) html+='<div class="err" style="margin-top:7px">'+r.errors.slice(0,5).map(e=>'・'+(e.horseNumber?'馬番'+e.horseNumber+'：':'')+e.message).join('<br>')+'</div>';
+  html+='<div style="margin-top:8px">'+r.horses.map(h=>'<div class="parse-horse"><strong>'+ (h.horseNumber??'?')+' '+(h.name||'馬名不明')+'</strong>　'+(h.sex||'')+(h.age||'')+'歳　'+(h.weight||'--')+'kg　'+(h.jockey||'騎手不明')+'　<span class="'+(h.confidence==='HIGH'?'ok':h.confidence==='MEDIUM'?'warn':'err')+'">'+h.confidence+'</span><br><span class="note">前4走：'+h.recentRaces.map((x,i)=>x?((i+1)+'走前 '+(x.status==='FINISH'?(x.finish+'着') : x.status)+(x.date?' '+x.date:'')):((i+1)+'走前 データなし')).join(' / ')+'</span></div>').join('')+'</div>';
+  html+='<button class="primary" style="margin-top:9px" onclick="applyParsedJRA()">この解析結果を展開シミュレーションへ反映</button>';
+  document.getElementById('parseResult').innerHTML=html;document.getElementById('parseResult').style.display='block';
+}
+function applyParsedJRA(){
+  if(!parsedJRA||!parsedJRA.horses.length)return;
+  horses=parsedJRA.horses.filter(h=>h.horseNumber&&h.name).slice(0,18).map(h=>[String(h.horseNumber),h.name]);
+  build();resetRace();
+  document.getElementById('dataStatus').textContent='JRA貼り付けデータ';
+  document.getElementById('sourceText').textContent='JRAコピー解析済み：'+parsedJRA.summary.horseCount+'頭 / 前4走解析';
+  document.getElementById('phase').innerHTML='<strong>JRAデータ反映済み</strong> — 解析結果を展開シミュレーションへ反映しました。';
+}
+function clearJRAInput(){document.getElementById('jraInput').value='';document.getElementById('parseResult').style.display='none';parsedJRA=null;}
+
 function simulateLive(){document.getElementById('dataStatus').textContent='データ更新済み';document.getElementById('sourceText').textContent='更新シミュレーション（接続口確認）';document.getElementById('temp').textContent=(21+Math.floor(Math.random()*5))+'℃';document.getElementById('windTxt').textContent=['南西','南','西','北西'][Math.floor(Math.random()*4)]+' '+(3+Math.floor(Math.random()*4))+'m/s';document.getElementById('windBar').style.width=(35+Math.floor(Math.random()*45))+'%';track.querySelectorAll('.horse').forEach(e=>e.classList.add('flash'));setTimeout(()=>track.querySelectorAll('.horse').forEach(e=>e.classList.remove('flash')),1200)}
 function loadDemo(){document.getElementById('dataStatus').textContent='JRAデータ形式デモ';document.getElementById('sourceText').textContent='出馬表デモデータを読み込み';simulateLive()}
 build();apply();resetRace();
